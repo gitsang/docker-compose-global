@@ -1,0 +1,97 @@
+version: '3'
+
+services:
+  shadowsocks-libev:
+    container_name: shadowsocks-libev
+    image: shadowsocks/shadowsocks-libev
+    restart: always
+    ports:
+      - 8388:8388
+      - 8388:8388/udp
+    environment:
+      SERVER_ADDR: 0.0.0.0
+      SERVER_ADDR_IPV6: ::0
+      METHOD: ${SS_METHOD}
+      PASSWORD: ${SS_PASSWORD}
+      TIMEOUT: 300
+      DNS_ADDRS: 8.8.8.8,8.8.4.4
+      TZ: UTC
+
+  node-exporter:
+    container_name: prom-node-exporter
+    image: prom/node-exporter:v1.7.0
+    restart: always
+    network_mode: host
+
+  blackbox-exporter:
+    container_name: prom-blackbox-exporter
+    image: prom/blackbox-exporter:v0.24.0
+    restart: always
+    network_mode: host
+    volumes:
+      - ./blackbox-exporter/blackbox-exporter.yml:/etc/blackbox_exporter/config.yml
+
+  process-exporter:
+    container_name: prom-process-exporter
+    image: ncabatoff/process-exporter:0.7.10
+    restart: always
+    network_mode: host
+    privileged: true
+    volumes:
+      - /proc:/host/proc:ro
+      - ./process-exporter/process-exporter.yml:/config/process-exporter.yml
+    command: --procfs /host/proc -config.path /config/process-exporter.yml
+
+  traefik:
+    image: traefik:v2.10.1
+    container_name: traefik
+    restart: always
+    network_mode: host
+    volumes:
+      - ./traefik/acme:/acme
+      - ./traefik/config:/etc/traefik/config
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - ALICLOUD_ACCESS_KEY=${ALI_DNS_ACCESS_KEY}
+      - ALICLOUD_SECRET_KEY=${ALI_DNS_SECRET_KEY}
+      - ALICLOUD_REGION_ID=${ALI_DNS_REGION_ID}
+
+  transfersh:
+    container_name: transfersh
+    image: dutchcoders/transfer.sh:v1.6.0
+    restart: always
+    volumes:
+      - ./transfersh/data:/transfer.sh
+    command:
+      - --provider=local
+      - --basedir=/transfer.sh
+    depends_on:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.to-send.rule=Host(`send.${DOMAIN}`)"
+      - "traefik.http.routers.to-send.tls.certResolver=ali_resolver"
+      - "traefik.http.routers.to-send.service=send"
+      - "traefik.http.services.send.loadBalancer.server.port=8080"
+
+  nextchat:
+    container_name: nextchat
+    image: yidadaa/chatgpt-next-web:v2.11.2
+    restart: always
+    environment:
+      CODE: ${NEXTCHAT_CODE}
+      BASE_URL: ${OPENAI_URL}
+      OPENAI_API_KEY: ${OPENAI_KEY}
+      GOOGLE_URL: ${GEMINI_URL}
+      GOOGLE_API_KEY: ${GEMINI_KEY}
+      DISABLE_GPT4: 1
+      HIDE_BALANCE_QUERY: 1
+    depends_on:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.to-nextchat.rule=Host(`nextchat.${DOMAIN}`)"
+      - "traefik.http.routers.to-nextchat.tls.certResolver=ali_resolver"
+      - "traefik.http.routers.to-nextchat.service=nextchat"
+      - "traefik.http.services.nextchat.loadBalancer.server.port=3000"

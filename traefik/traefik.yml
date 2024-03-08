@@ -1,0 +1,52 @@
+#@ Global ====================
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+log:
+  format: common
+  level: debug
+
+accessLog:
+  format: CLF
+
+api:
+  dashboard: true
+  debug: true
+  insecure: true
+
+#@ EntryPoints ====================
+
+entryPoints:
+  traefik:
+    address: :8088
+  web:
+    address: :80
+    forwardedheaders:
+      insecure: true
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: :443
+
+#@ Providers ====================
+
+providers:
+  providersThrottleDuration: 10s
+  docker:
+    exposedbydefault: false
+  file:
+    watch: true
+    directory: /etc/traefik/config
+
+certificatesResolvers:
+  ali_resolver:
+    acme:
+      storage: /acme/acme.json
+      dnsChallenge:
+        delayBeforeCheck: 0
+        provider: alidns
